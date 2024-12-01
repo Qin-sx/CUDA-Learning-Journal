@@ -7,3 +7,7 @@ Embarking on the journey of CUDA learning is both intriguing and extensive. To r
 2. no bank conflict
 3. multiple elements in one thread
 4. vectorized memory access
+
+## Streaming MultiProcessor
+1. SM have shared memory, register file , warp sechduler ans so on.
+2. One block can only be in one SM, but one SM contain multiple blocks.
