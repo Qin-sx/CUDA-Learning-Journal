@@ -16,6 +16,7 @@
 using namespace nvcuda;
 
 #define TYPE half
+#define TYPE_MATC float
 #define TYPEV half2
 // #define M 4
 // #define K 3
@@ -77,8 +78,8 @@ warm_up()
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication0(const T *a, const T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication0(const T *a, const T *b, U *c)
 {
     int idX = blockIdx.x * blockDim.x + threadIdx.x;
     int idY = blockIdx.y * blockDim.y + threadIdx.y;
@@ -93,8 +94,8 @@ __global__ void matrix_multiplication0(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication1(const T *a, const T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication1(const T *a, const T *b, U *c)
 {
     int idX = blockIdx.x * blockDim.x + threadIdx.x;
     int idY = blockIdx.y * blockDim.y + threadIdx.y;
@@ -106,7 +107,7 @@ __global__ void matrix_multiplication1(const T *a, const T *b, T *c)
     __shared__ T bs[SUBK][BLOCK_SIZE_N];
 
     {
-        T cTmp = 0;
+        U cTmp = 0;
 
         // read a and b into shared memory by SUBK
         // SUBK * BLOCK_SIZE_M 1, SUBK * BLOCK_SIZE_M 2, SUBK * BLOCK_SIZE_M 3...
@@ -129,7 +130,7 @@ __global__ void matrix_multiplication1(const T *a, const T *b, T *c)
                 // i0    i1
                 // j0 j1 j0 j1
                 if (i + j < K)
-                    cTmp += as[tidY][j] * bs[j][tidX]; // why no bank conflict? as[0,1...][tidX] = 0 yes, as[0][tidX] = 0 no.  different position in same bank will cause bank conflict
+                    cTmp += __half2float(as[tidY][j] * bs[j][tidX]); // why no bank conflict? as[0,1...][tidX] = 0 yes, as[0][tidX] = 0 no.  different position in same bank will cause bank conflict
                 // if(idX == 0 && idY == 0)
                 // {
                 //   printf("i: %d, j: %d, idX: %d, idY: %d, as: %d, bs: %d, cTmp: %d\n", i, j, idX, idY, as[tidY * BLOCK_SIZE_M + j], bs[j * BLOCK_SIZE_N + tidX], cTmp);
@@ -147,8 +148,8 @@ __global__ void matrix_multiplication1(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication2(const T *a, const T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication2(const T *a, const T *b, U *c)
 {
     int idX = blockIdx.x * (blockDim.x * NUM_PER_THREAD_N) + threadIdx.x;
     int idY = blockIdx.y * (blockDim.y * NUM_PER_THREAD_M) + threadIdx.y;
@@ -161,7 +162,7 @@ __global__ void matrix_multiplication2(const T *a, const T *b, T *c)
 
     {
         // T cTmp = 0;
-        T cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
+        U cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
 
         for (int i = 0; i < K; i += SUBK)
         {
@@ -210,7 +211,7 @@ __global__ void matrix_multiplication2(const T *a, const T *b, T *c)
                         if (i + j < K)
                         {
                             // if ((idY + m * DIVIDE_M) < M && (idX + n * DIVIDE_N) < N && i + j < K)
-                            cTmp[m][n] += as[(tidY + m * DIVIDE_M)][j] * bs[j][(tidX + n * DIVIDE_N)];
+                            cTmp[m][n] += __half2float(as[(tidY + m * DIVIDE_M)][j] * bs[j][(tidX + n * DIVIDE_N)]);
                             // if (idX == 0 && idY == 0)
                             // {
                             //     printf("i: %d, j: %d, m: %d, n: %d, idX: %d, idY: %d, as: %d, bs: %d, cTmp: %d\n", i, j, m, n, idX, idY, as[(tidY + m * DIVIDE_M)][j], bs[j][(tidX + n * DIVIDE_N)], cTmp[m][n]);
@@ -237,8 +238,8 @@ __global__ void matrix_multiplication2(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication3(const T *a, const T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication3(const T *a, const T *b, U *c)
 {
     int idX = blockIdx.x * (blockDim.x * NUM_PER_THREAD_N) + threadIdx.x;
     int idY = blockIdx.y * (blockDim.y * NUM_PER_THREAD_M) + threadIdx.y;
@@ -251,7 +252,7 @@ __global__ void matrix_multiplication3(const T *a, const T *b, T *c)
 
     {
         // T cTmp = 0;
-        T cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
+        U cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
 
         for (int i = 0; i < K; i += SUBK)
         {
@@ -301,7 +302,7 @@ __global__ void matrix_multiplication3(const T *a, const T *b, T *c)
                         // br = bs[j][(tidX + n * DIVIDE_N)];
                         if (i + j < K)
                         {
-                            cTmp[m][n] += ar * br[n];
+                            cTmp[m][n] += __half2float(ar * br[n]);
                         }
                     }
                 }
@@ -322,8 +323,8 @@ __global__ void matrix_multiplication3(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication4(const T *a, const T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication4(const T *a, const T *b, U *c)
 {
     int idX = blockIdx.x * (blockDim.x * NUM_PER_THREAD_N) + threadIdx.x;
     int idY = blockIdx.y * (blockDim.y * NUM_PER_THREAD_M) + threadIdx.y;
@@ -336,7 +337,7 @@ __global__ void matrix_multiplication4(const T *a, const T *b, T *c)
 
     {
         // T cTmp = 0;
-        T cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
+        U cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N] = {0};
 
 #pragma unroll
         for (int m = 0; m < BLOCK_SIZE_M; m += DIVIDE_M)
@@ -383,7 +384,7 @@ __global__ void matrix_multiplication4(const T *a, const T *b, T *c)
                         br = bs[iBuffer][j][(tidX + n * DIVIDE_N)];
                         if (i + j < K)
                         {
-                            cTmp[m][n] += ar * br;
+                            cTmp[m][n] += __half2float(ar * br);
                         }
                     }
                 }
@@ -434,8 +435,8 @@ __global__ void matrix_multiplication4(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-__global__ void matrix_multiplication5(T *a, T *b, T *c)
+template <typename T, typename U>
+__global__ void matrix_multiplication5(T *a, T *b, U *c)
 {
     int idX = blockIdx.x * (blockDim.x * NUM_PER_THREAD_N * VECTOR_N) + threadIdx.x * VECTOR_N;
     int idY = blockIdx.y * (blockDim.y * NUM_PER_THREAD_M) + threadIdx.y;
@@ -448,7 +449,7 @@ __global__ void matrix_multiplication5(T *a, T *b, T *c)
 
     {
         // T cTmp = 0;
-        T cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N][VECTOR_N] = {0};
+        U cTmp[NUM_PER_THREAD_M][NUM_PER_THREAD_N][VECTOR_N] = {0};
 
         for (int i = 0; i < K; i += SUBK)
         {
@@ -522,10 +523,10 @@ __global__ void matrix_multiplication5(T *a, T *b, T *c)
                         T br3 = bs[j][(tidX + 3 + n * DIVIDE_N)];
                         if (i + j < K)
                         {
-                            cTmp[m][n][0] += ar * br0;
-                            cTmp[m][n][1] += ar * br1;
-                            cTmp[m][n][2] += ar * br2;
-                            cTmp[m][n][3] += ar * br3;
+                            cTmp[m][n][0] += __half2float(ar * br0);
+                            cTmp[m][n][1] += __half2float(ar * br1);
+                            cTmp[m][n][2] += __half2float(ar * br2);
+                            cTmp[m][n][3] += __half2float(ar * br3);
                         }
                     }
                 }
@@ -554,8 +555,8 @@ __global__ void matrix_multiplication5(T *a, T *b, T *c)
 }
 
 
-template <typename T>
-void print_output(T *a, T *b, T *c)
+template <typename T, typename U>
+void print_output(T *a, T *b, U *c)
 {
     for (int i = 0; i < M * K; ++i)
     {
@@ -586,8 +587,8 @@ void print_output(T *a, T *b, T *c)
     std::cout << std::endl;
 }
 
-template <typename T>
-void matrix_multiplication_cpu(const T *a, const T *b, T *c)
+template <typename T, typename U>
+void matrix_multiplication_cpu(const T *a, const T *b, U *c)
 {
     for (int i = 0; i < M; ++i)
     {
@@ -603,22 +604,22 @@ void matrix_multiplication_cpu(const T *a, const T *b, T *c)
     }
 }
 
-template <typename T>
-void matrix_multiplication_cublas(const T *a, const T *b, T *c)
+template <typename T, typename U>
+void matrix_multiplication_cublas(const T *a, const T *b, U *c)
 {
     cublasHandle_t handle;
     cublasCreate(&handle);
 
-    const T alpha = 1.0;
-    const T beta = 0.0;
+    const float alpha = 1.0;
+    const float beta = 0.0;
 
     // cuBLAS expects column-major order, so we need to transpose the matrices
     cublasStatus_t status = cublasGemmEx(handle,
                                          CUBLAS_OP_N, CUBLAS_OP_N,
                                          N, M, K,
                                          &alpha,
-                                         b, CUDA_R_32F, N,
-                                         a, CUDA_R_32F, K,
+                                         b, CUDA_R_16F, N,
+                                         a, CUDA_R_16F, K,
                                          &beta,
                                          c, CUDA_R_32F, N,
                                          CUDA_R_32F,
@@ -634,8 +635,8 @@ void matrix_multiplication_cublas(const T *a, const T *b, T *c)
 
 
 // reference: https://github.com/xlite-dev/hgemm-tensorcores-mma/blob/main/kernels/hgemm/wmma/hgemm_wmma.cu
-template <typename T, const int WMMA_M=16, const int WMMA_N=16, const int WMMA_K=16>
-__global__ void matrix_multiplication_wmma(const T *a, const T *b, T *c)
+template <typename T, typename U, const int WMMA_M=16, const int WMMA_N=16, const int WMMA_K=16>
+__global__ void matrix_multiplication_wmma(const T *a, const T *b, U *c)
 {
     const int NUM_K_TILES = (K + WMMA_K - 1) / WMMA_K;
 
@@ -664,11 +665,11 @@ __global__ void matrix_multiplication_wmma(const T *a, const T *b, T *c)
         __syncthreads();
     }
 
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> C_out_frag;
-    for (int i = 0; i < C_out_frag.num_elements; i++) {
-        C_out_frag.x[i] = __float2half(C_frag.x[i]);
-    }
-    wmma::store_matrix_sync(c + load_gmem_a_m * N + load_gmem_b_n, C_out_frag, N, 
+    // wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, U> C_out_frag;
+    // for (int i = 0; i < C_out_frag.num_elements; i++) {
+    //     C_out_frag.x[i] = __float2half(C_frag.x[i]);
+    // }
+    wmma::store_matrix_sync(c + load_gmem_a_m * N + load_gmem_b_n, C_frag, N, 
         wmma::mem_row_major);
 }
 
@@ -678,8 +679,8 @@ int main()
     // Allocate space for host copies of a, b
     thrust::host_vector<TYPE> a(M * K);
     thrust::host_vector<TYPE> b(K * N);
-    thrust::host_vector<TYPE> c(M * N);
-    thrust::host_vector<TYPE> c_cpu(M * N);
+    thrust::host_vector<TYPE_MATC> c(M * N);
+    thrust::host_vector<TYPE_MATC> c_cpu(M * N);
 
     // Randomly initialize a and b
     std::random_device rd;
@@ -709,7 +710,7 @@ int main()
     // Allocate space for device copies of a, b
     thrust::device_vector<TYPE> d_a = a;
     thrust::device_vector<TYPE> d_b = b;
-    thrust::device_vector<TYPE> d_c(M * N, 0);
+    thrust::device_vector<TYPE_MATC> d_c(M * N, 0);
 
     dim3 threads_per_block(BLOCK_SIZE_N, BLOCK_SIZE_M, 1); // x y z
     dim3 no_of_blocks((N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N, (M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M, 1);
@@ -729,7 +730,7 @@ int main()
     matrix_multiplication5<<<no_of_blocks_multi, threads_per_block_multi2>>>(thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_b.data()), thrust::raw_pointer_cast(d_c.data()));
 
     // Perform CUTLASS matrix multiplication
-    // matrix_multiplication_cublas(thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_b.data()), thrust::raw_pointer_cast(d_c.data()));
+    matrix_multiplication_cublas(thrust::raw_pointer_cast(d_a.data()), thrust::raw_pointer_cast(d_b.data()), thrust::raw_pointer_cast(d_c.data()));
 
     dim3 no_of_blocks_wmma((N + 16 - 1) / 16, (M + 16 - 1) / 16); 
     dim3 threads_per_block_mma(32, 1);
@@ -747,10 +748,10 @@ int main()
     bool match = true;
     for (int i = 0; i < M * N; ++i)
     {
-        if (fabs(__half2float(c[i]-c_cpu[i])) / fabs(__half2float(c_cpu[i])) > 0.01)
+        if (fabs(c[i]-c_cpu[i]) / fabs(c_cpu[i]) > 0.001)
         {
             match = false;
-            std::cout <<i<< " error "<<fabs(__half2float(c[i]-c_cpu[i]))<<" " << __half2float(c[i]) << " " <<__half2float(c_cpu[i])<<std::endl;
+            std::cout <<i<< " error "<<fabs(c[i]-c_cpu[i])<<" " << c[i] << " " <<c_cpu[i]<<std::endl;
             break;
         }
     }
