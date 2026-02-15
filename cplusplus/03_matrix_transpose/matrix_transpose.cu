@@ -6,8 +6,8 @@
 #include <thrust/sequence.h>
 
 #define TYPE int
-#define N 330
-#define M 340
+#define N 128
+#define M 128
 #define BLOCK_SIZE 32
 #define NUM_PER_THREAD 8
 

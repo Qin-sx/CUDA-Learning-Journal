@@ -645,7 +645,7 @@ __global__ void matrix_multiplication_wmma(const T *a, const T *b, U *c)
 
     if (load_gmem_a_m >= M || load_gmem_b_n >= N) return;
 
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> C_frag;
+    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, U> C_frag;
     wmma::fill_fragment(C_frag, 0.0);
 
     #pragma unroll
@@ -654,10 +654,10 @@ __global__ void matrix_multiplication_wmma(const T *a, const T *b, U *c)
         const int load_gmem_a_k = k * WMMA_K;
         const int load_gmem_b_k = k * WMMA_K;
 
-        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_K, WMMA_M, T, wmma::row_major> A_frag;
+        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, T, wmma::row_major> A_frag;
         wmma::load_matrix_sync(A_frag, a + load_gmem_a_m * K + load_gmem_a_k, K);
 
-        wmma::fragment<wmma::matrix_b, WMMA_K, WMMA_N, WMMA_N, T, wmma::row_major> B_frag;
+        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, T, wmma::row_major> B_frag;
         wmma::load_matrix_sync(B_frag, b + load_gmem_b_k * N + load_gmem_b_n, N);
 
         wmma::mma_sync(C_frag, A_frag, B_frag, C_frag);
@@ -672,6 +672,9 @@ __global__ void matrix_multiplication_wmma(const T *a, const T *b, U *c)
     wmma::store_matrix_sync(c + load_gmem_a_m * N + load_gmem_b_n, C_frag, N, 
         wmma::mem_row_major);
 }
+
+
+
 
 
 int main()
