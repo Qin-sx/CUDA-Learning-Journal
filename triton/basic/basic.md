@@ -127,6 +127,34 @@ def add_kernel(
         tl.store(output_ptr + curr_offsets, output, mask=mask)
 ```
 
+生成的向量化读取指令
+```
+	// begin inline asm
+	mov.u32 %r1, 0x0;
+	mov.u32 %r2, 0x0;
+	mov.u32 %r3, 0x0;
+	mov.u32 %r4, 0x0;
+	@%p1 ld.global.v4.b32 { %r1, %r2, %r3, %r4 }, [ %rd1 + 0 ];
+	// end inline asm
+	.loc	1 59 28                         // test_vec_add.py:59:28
+	add.s64 	%rd2, %rd5, %rd7;
+	.loc	1 59 20                         // test_vec_add.py:59:20
+	// begin inline asm
+	mov.u32 %r5, 0x0;
+	mov.u32 %r6, 0x0;
+	mov.u32 %r7, 0x0;
+	mov.u32 %r8, 0x0;
+	@%p1 ld.global.v4.b32 { %r5, %r6, %r7, %r8 }, [ %rd2 + 0 ];
+	// end inline asm
+```
+
+生成的共享内存指令
+```
+  // begin inline asm
+	cp.async.cg.shared.global [ %r127 + 0 ], [ %rd29 + 0 ], 0x10, %r128;
+	// end inline asm
+```
+
 ## triton语法
 
 ### `make_block_ptr`&#x20;
