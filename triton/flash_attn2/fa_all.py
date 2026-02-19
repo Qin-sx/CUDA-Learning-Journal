@@ -1,5 +1,6 @@
+
 import math
-import time
+from triton.testing import do_bench
 
 import torch
 import triton
@@ -126,12 +127,10 @@ def _benchmark_kernel(meta, q, k, v, sm_scale, causal, warmup, iters):
 		_run_kernel(meta, q, k, v, sm_scale, causal)
 	torch.cuda.synchronize()
 
-	t0 = time.perf_counter()
-	for _ in range(iters):
+	def fn():
 		_run_kernel(meta, q, k, v, sm_scale, causal)
-	torch.cuda.synchronize()
 
-	return (time.perf_counter() - t0) / iters
+	return do_bench(fn, rep=iters)
 
 
 def _benchmark_sdpa(q, k, v, sm_scale, causal, warmup, iters):
@@ -144,16 +143,15 @@ def _benchmark_sdpa(q, k, v, sm_scale, causal, warmup, iters):
 			)
 	torch.cuda.synchronize()
 
-	t0 = time.perf_counter()
-	for _ in range(iters):
+	def fn():
 		with torch.backends.cuda.sdp_kernel(
 			enable_flash=True, enable_mem_efficient=False, enable_math=False
 		):
 			torch.nn.functional.scaled_dot_product_attention(
 				q, k, v, is_causal=causal, scale=sm_scale
 			)
-	torch.cuda.synchronize()
-	return (time.perf_counter() - t0) / iters
+
+	return do_bench(fn, rep=iters)
 
 
 def _benchmark_flash_attn(q, k, v, sm_scale, causal, warmup, iters):
@@ -170,15 +168,14 @@ def _benchmark_flash_attn(q, k, v, sm_scale, causal, warmup, iters):
 		flash_attn_func(q_fa, k_fa, v_fa, causal=causal, softmax_scale=sm_scale)
 	torch.cuda.synchronize()
 
-	t0 = time.perf_counter()
-	for _ in range(iters):
+	def fn():
 		flash_attn_func(q_fa, k_fa, v_fa, causal=causal, softmax_scale=sm_scale)
-	torch.cuda.synchronize()
-	return (time.perf_counter() - t0) / iters
+
+	return do_bench(fn, rep=iters)
 
 
-def _print_ms(label, seconds):
-	print(f"{label}: {seconds * 1e3:.3f} ms")
+def _print_ms(label, ms):
+	print(f"{label}: {ms:.3f} ms")
 
 
 def _render_markdown_table(rows):
@@ -226,7 +223,7 @@ def main():
 		print(f"\n=== Benchmark (causal={causal}) ===")
 		sdpa_time = _benchmark_sdpa(q, k, v, sm_scale, causal, warmup, iters)
 		_print_ms("sdpa", sdpa_time)
-		results.append({"causal": causal, "kernel": "sdpa", "time_ms": sdpa_time * 1e3})
+		results.append({"causal": causal, "kernel": "sdpa", "time_ms": sdpa_time})
 
 		flash_time = _benchmark_flash_attn(q, k, v, sm_scale, causal, warmup, iters)
 		if flash_time is None:
@@ -237,7 +234,7 @@ def main():
 			results.append({
 				"causal": causal,
 				"kernel": "flash-attn",
-				"time_ms": flash_time * 1e3,
+				"time_ms": flash_time,
 			})
 
 		for meta in KERNELS:
@@ -246,7 +243,7 @@ def main():
 			results.append({
 				"causal": causal,
 				"kernel": f"{meta['name']} ({meta['notes']})",
-				"time_ms": t_kernel * 1e3,
+				"time_ms": t_kernel,
 			})
 
 	for row in results:
@@ -254,7 +251,7 @@ def main():
 		if flash_time is None:
 			row["perf_of_flash"] = "n/a"
 		else:
-			pct = (flash_time * 1e3 / row["time_ms"]) * 100.0
+			pct = (flash_time / row["time_ms"]) * 100.0
 			row["perf_of_flash"] = f"{pct:.1f}%"
 
 	md = _render_markdown_table(results)
